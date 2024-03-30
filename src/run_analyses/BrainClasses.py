@@ -10,9 +10,9 @@ class ANNEncoder:
 				 actv_cache_setting: typing.Union[str, None] = 'auto',  # if auto, use cache. If None, don't use cache
 				 actv_cache_path: typing.Union[str, None] = None) -> None:
 
-		self._source_model = source_model
+		self._source_model = source_model.strip("\'")
 
-		if source_model.startswith('gpt') or source_model.startswith('bert'):
+		if self._source_model.startswith('gpt') or self._source_model.startswith('bert'):
 			# Pretrained model
 			from transformers import AutoModel, AutoConfig, AutoTokenizer
 			self.config = AutoConfig.from_pretrained(self._source_model)

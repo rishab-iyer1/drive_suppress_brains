@@ -13,14 +13,14 @@ Allows to:
 
 def main(raw_args=None):
 	parser = argparse.ArgumentParser(description='')
-	
+
 	## Shared parameters among weights and brain target ##
 	# ANN (source) specific (used for loading weights and computing embeddings for the new target stimset)
 	parser.add_argument('--source_model', default='gpt2-xl', type=str, help='Pretrained model name')
 	parser.add_argument('--source_layer', default=22, help='Which layer to use for prediction')
 	parser.add_argument('--sent_embed', default='last-tok', type=str, help='How to obtain sentence embeddings')
 	parser.add_argument('--actv_cache_setting', default='auto', type=str, help='Which cache setting to use')
-	
+
 	# Mapping specific
 	parser.add_argument('--mapping_class', default='ridgeCV', type=str, help='Which mapping class to use')
 	parser.add_argument('--metric', default='pearsonr', type=str, help='Which metric to use')
@@ -45,11 +45,11 @@ def main(raw_args=None):
 	parser.add_argument('--mapping_savestr_prefix', default='20221214a', type=str, help='If the netw_dict was stored using a savestr_prefix, specify it here.')
 	parser.add_argument('--mapping_specific_target', default=None, type=str2none, help='Whether to run a specific target')
 
-	
+
 	# Corpus (stimset) specific
-	parser.add_argument('--stimset_path', default='/om2/user/gretatu/script_repos/beta-neural-control/material_selection/drive_set_selection_synth/',
+	parser.add_argument('--stimset_path', default='../../model-actv/gpt2-xl/last-tok/',
 						type=str, help='Path directory of the stimset')
-	parser.add_argument('--stimset_filename', default='beta-control-neural_stimset_D.csv', type=str, help='Filename of the stimset')
+	parser.add_argument('--stimset_filename', default='beta-control-neural-D_stim.pkl', type=str, help='Filename of the stimset')
 	parser.add_argument('--stimset_colname', default='sentence', type=str, help='Name of the column in the stimset that contains the sentences')
 	parser.add_argument('--compute_stretch_metrics', default=False, type=str2bool, help='Whether to compute stretch metrics for the predicted '
 																					   'responses of the stimset. Stretch metrics are based on the'
@@ -58,11 +58,11 @@ def main(raw_args=None):
 
 	# Misc
 	parser.add_argument('--verbose', default=True, type=str2bool, help='Whether to print output and not create a log file')
-	
+
 	####### Arguments and logging #######
 	args = parser.parse_args(raw_args)
 	print(vars(args)) # To add it to the .out file prior logging
-	
+
 	args_logger = ArgumentLogger(vars(args),
 								 script_name=script_name,
 								 add_args={'mapping_sess_id': args.mapping_sess_num,
@@ -75,7 +75,7 @@ def main(raw_args=None):
 								 )
 	args_logger.create_save_str()
 
-		
+
 	####### CREATE LOGGING FILE WITH CORRECT PARAMETERS ########
 	if not args.verbose:
 		logfile = join(args_logger.LOGDIR, f"{script_name}_{args_logger.save_str}_{date}.log")
@@ -83,12 +83,12 @@ def main(raw_args=None):
 		os.makedirs("/".join(logfile.split('/')[:-1]), exist_ok=True)
 		print(f'\nLogging output to file...\n {logfile}')
 		sys.stdout = open(logfile, 'a+')
-	
+
 	print('\n' + ('*' * 40))
 	print(vars(args))
 	print(('*' * 40) + '\n')
 	args_logger.print_package_versions()
-	
+
 	### Obtain mapping (weight) folder (result_identifier) and mapping (weight) save string (save_str)
 	mapping_result_identifier = f'SOURCE-{args.source_model}_' \
 								f'{args.sent_embed}_' \
@@ -111,15 +111,14 @@ def main(raw_args=None):
 					   f'MAPPING-{args.preprocessor}-' \
 					   f'{args.preprocess_X}-' \
 					   f'{args.preprocess_y}'
-	
+
 	args_logger.add_key_val({'mapping_result_identifier': mapping_result_identifier,
 							 'mapping_save_str': mapping_save_str})
 
 
 	####### "BRAIN" (CORPUS) ENCODER ########
-	stimset = pd.read_csv(join(args.stimset_path,
-							   args.stimset_filename), index_col=0)
-	
+	# stimset = pd.read_csv(join(args.stimset_path, args.stimset_filename), index_col=0)
+	stimset = pd.read_pickle(join(args.stimset_path, args.stimset_filename))
 	brain = BrainEncoder()
 	brain.encode(stimset=stimset,
 				 neural_data=None,
@@ -131,7 +130,7 @@ def main(raw_args=None):
 					 sent_embed=args.sent_embed,
 					 actv_cache_setting=args.actv_cache_setting,
 					 actv_cache_path=args_logger.ACTVDIR)
-	
+
 	# Encode the new brain target stimset
 	ann.encode(stimset=stimset,
 			   stim_col=args.stimset_colname,
@@ -143,10 +142,10 @@ def main(raw_args=None):
 
 	####### METRIC ########
 	metric = Metric(metric=args.metric)
-	
+
 	####### PREPROCESSOR ########
 	preprocessor = Preprocessor(preprocess=args.preprocessor)
-	
+
 	####### MAPPING ########
 	mapping = Mapping(ANNEncoder=ann,
 					  ann_layer=args.source_layer,
@@ -156,12 +155,12 @@ def main(raw_args=None):
 					  Preprocessor=preprocessor,
 					  preprocess_X=args.preprocess_X,
 					  preprocess_y=args.preprocess_y,)
-	
+
 	#### Load stored mapping weights #####
 	mapping.load_full_mapping(WEIGHTDIR=WEIGHTROOT,
 							  mapping_result_identifier=mapping_result_identifier,
 							  mapping_save_str=f'mapping-full_{mapping_save_str}.pkl')
-	
+
 	#### Check the mapping (weights) against the information that was stored in the CV results df ####
 	check_mapping_against_CV_results = True
 	if check_mapping_against_CV_results:
@@ -169,7 +168,7 @@ def main(raw_args=None):
 										   'fit_mapping',
 										   mapping_result_identifier,
 										   f'CV-k-5_{mapping_save_str}.pkl'))
-		
+
 		assert (df_cv_scores.index.values == mapping.prefitted_clf_neuroid_order).all()
 		assert (df_cv_scores.full_alpha == mapping.prefitted_clf.alpha_).all()
 		assert (df_cv_scores.source_model == args.source_model).all()
@@ -182,11 +181,11 @@ def main(raw_args=None):
 		assert (df_cv_scores.result_identifier == mapping_result_identifier).all()
 		assert (df_cv_scores.save_str == mapping_save_str).all()
 		print(f'== Passed mapping weights vs CV results check for {mapping_result_identifier}')
-		
+
 	#### Predict the stimset ####
 	df_preds = mapping.predict_using_prefitted_mapping()
-	
-	
+
+
 	if args.compute_stretch_metrics:
 		# Load the neural values that were used to obtain the mapping weights (for computing stretch metrics)
 		pred_full = pd.read_pickle(join(RESULTROOT,
@@ -195,7 +194,7 @@ def main(raw_args=None):
 										   f'pred-full_{mapping_save_str}.pkl'))
 	else:
 		pred_full = None
-	
+
 	#### Package the results #####
 	df_preds_packaged = package_pred_results_as_df(df=df_preds,
 												   stimset=stimset,
@@ -212,25 +211,25 @@ def main(raw_args=None):
 												 'mapping_sess_id', 'save_str', 'mapping_result_identifier',
 												 'mapping_save_str', ],
 												 pred_full=pred_full,)
-	
+
 	# If CV results were loaded from the mapping model, add in the CV results to the packaged results
 	if check_mapping_against_CV_results:
 		df_preds_packaged = add_CV_results_to_df(df_preds_packaged=df_preds_packaged,
 												   df_cv_scores=df_cv_scores)
-		
-	
+
+
 	############## ADD OTHER METADATA ##############
-	
+
 	if args.store_full_pred:
 		df_preds_packaged = args_logger.add_args_to_df(df=df_preds_packaged)
-		
+
 		# Check for duplicated column names
 		assert df_preds_packaged.columns.duplicated().sum() == 0
-		
+
 		args_logger.store(data=df_preds_packaged, # Only store the predictions because real brain data does not exist
 						  DIR = 'RESULTDIR',
 						  prefix_str='pred-full',)
-	
+
 	sys.stdout.flush()
 
 
